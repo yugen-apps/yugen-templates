@@ -1,0 +1,53 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+      nuget_source_url:
+        required: false
+        type: string
+        default: "https://api.nuget.org/v3/index.json"
+    secrets:
+      nuget_api_key:
+        required: true
+
+jobs:
+  deploy_nuget_job:
+    runs-on: ubuntu-latest
+    steps:
+      
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "artifact_name: ${{ inputs.artifact_name }}"
+          Write-Host "artifact_dir: ${{ inputs.artifact_dir }}"
+          Write-Host "nuget_api_key: ${{ secrets.nuget_api_key }}"
+          Write-Host "nuget_source_url: ${{ inputs.nuget_source_url }}"
+
+      - name: artifact_download
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_name }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+    
+      # https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-nuget-push
+      - name: deploy_nuget
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: >
+          dotnet nuget push "*.nupkg"
+          --api-key "${{ secrets.nuget_api_key }}"
+          --source "${{ inputs.nuget_source_url }}"
+          --skip-duplicate

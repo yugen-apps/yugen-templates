@@ -1,0 +1,38 @@
+on:
+  workflow_call:
+    outputs:
+      major_minor_patch:
+        value: ${{ jobs.setup_job.outputs.major_minor_patch }}
+      major_minor_patch_build:
+        value: ${{ jobs.setup_job.outputs.major_minor_patch_build }}
+
+jobs:
+  setup_job:
+    runs-on: ubuntu-latest
+    outputs:
+      major_minor_patch: ${{ steps.set_version.outputs.major_minor_patch }}
+      major_minor_patch_build: ${{ steps.set_version.outputs.major_minor_patch_build }}
+    steps:
+
+      - name: set_version
+        id: set_version
+        shell: pwsh
+        run: |
+          $RefName = "${{ github.ref_name }}"
+
+          # Select the last item from the array
+          $MajorMinorPatch = $RefName.Split("/")[-1]
+          $MajorMinorPatchBuild = "${MajorMinorPatch}.0"
+
+          if ($RefName.Contains("preview")) {
+              $MajorMinorPatch = "${MajorMinorPatch}-preview"
+          }
+              
+          Write-Output "major_minor_patch=$($MajorMinorPatch)" >> $Env:GITHUB_OUTPUT
+          Write-Output "major_minor_patch_build=$($MajorMinorPatchBuild)" >> $Env:GITHUB_OUTPUT
+
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "major_minor_patch: ${{ steps.set_version.outputs.major_minor_patch }}"
+          Write-Host "major_minor_patch_build: ${{ steps.set_version.outputs.major_minor_patch_build }}"

@@ -1,0 +1,100 @@
+on:
+  workflow_call:
+    inputs:
+      dotnet_cache:
+        required: false
+        type: boolean
+        default: false
+      dotnet_version:
+        required: false
+        type: string
+        default: "10"
+      project_configuration:
+        required: false
+        type: string
+        default: "Release"
+      project_name:
+        required: true
+        type: string
+      project_version:
+        required: false
+        type: string
+        default: "0.0.1"
+      solution_file:
+        required: true
+        type: string
+
+jobs:
+  build_msbuild_pack_job:
+    runs-on: windows-2025-vs2026
+    steps:
+
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "project_configuration: ${{ inputs.project_configuration }}"
+          Write-Host "project_name: ${{ inputs.project_name }}"
+          Write-Host "project_version: ${{ inputs.project_version }}"
+          Write-Host "solution_file: ${{ inputs.solution_file }}"
+
+      - name: debug_dir
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse
+
+      # https://github.com/actions/cache/blob/v5/examples.md#c---nuget
+      - name: set_nuget_cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: nuget_setup
+        uses: nuget/setup-nuget@v4
+
+      - name: nuget_restore
+        shell: pwsh
+        run: >
+          nuget restore ${{ inputs.solution_file }}
+      
+      - name: msbuild_setup
+        uses: microsoft/setup-msbuild@v3   
+        with:
+          msbuild-architecture: x64 
+
+      - name: msbuild_build
+        shell: pwsh
+        run: >
+          msbuild "${{ inputs.project_name }}/${{ inputs.project_name }}.csproj"
+          /p:Configuration="${{ inputs.project_configuration }}"
+          /p:PackageVersion="${{ inputs.project_version }}"
+          /p:Version="${{ inputs.project_version }}"
+
+      - name: msbuild_pack
+        shell: pwsh
+        run: > 
+          msbuild "${{ inputs.project_name }}/${{ inputs.project_name }}.csproj"
+          /p:Configuration="${{ inputs.project_configuration }}"
+          /t:pack 
+          /p:PackageVersion="${{ inputs.project_version }}"
+          /p:Version="${{ inputs.project_version }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.project_name }}/bin/${{ inputs.project_configuration }}/"
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: artifact_upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ inputs.project_name }}"
+          path: "./${{ inputs.project_name }}/bin/${{ inputs.project_configuration }}/*.nupkg"

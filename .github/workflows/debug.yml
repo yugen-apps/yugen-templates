@@ -1,0 +1,33 @@
+on:
+  workflow_call:
+
+jobs:
+  debug_job:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: dotnet_info
+        shell: pwsh
+        run: |
+          dotnet --info
+
+# - if: ${{ !contains(github.ref_name, 'dev') }}
+# - if: ${{ contains(github.ref_name, 'dev') }}
+#   name: debug dev
+#   shell: pwsh
+#   continue-on-error: true
+#   run: |        
+#     Write-Host "base_ref: ${{ github.base_ref }}"
+#     Write-Host "GITHUB_BASE_REF: $Env:GITHUB_BASE_REF"
+
+#     Write-Host "head_ref: ${{ github.head_ref }}"
+#     Write-Host "GITHUB_HEAD_REF: $Env:GITHUB_HEAD_REF"
+
+#     Write-Host "ref: ${{ github.ref }}"
+#     Write-Host "GITHUB_REF_NAME: $Env:GITHUB_REF"
+
+#     Write-Host "ref_name: ${{ github.ref_name }}"
+#     Write-Host "GITHUB_REF_NAME: $Env:GITHUB_REF_NAME"
+
+#     Write-Host "ref_name: ${{ github.workspace }}"
+#     Write-Host "GITHUB_REF_NAME: $Env:GITHUB_WORKSPACE"
