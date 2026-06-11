@@ -1,0 +1,110 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+      project_version:
+        required: true
+        type: string
+      store_app_id:
+        required: true
+        type: string
+      store_architectures:
+        required: false
+        type: string
+        default: "x64_ARM64"
+      store_flight_id:
+        required: true
+        type: string
+    secrets:
+      azure_client_id:
+        required: true
+      azure_client_secret:
+        required: true
+      azure_tenant_id:
+        required: true
+      azure_subscription_id:
+        required: true
+      store_seller_id:
+        required: true
+
+jobs:
+  deploy_store_job:
+    runs-on: windows-2025-vs2026
+    steps:
+      
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "artifact_name: ${{ inputs.artifact_name }}"
+          Write-Host "artifact_dir: ${{ inputs.artifact_dir }}"
+          Write-Host "project_version: ${{ inputs.project_version }}"
+          Write-Host "store_app_id: ${{ inputs.store_app_id }}"
+          Write-Host "store_architectures: ${{ inputs.store_architectures }}"
+          Write-Host "store_flight_id: ${{ inputs.store_flight_id }}"
+          Write-Host "msixupload: ${{ inputs.artifact_name }}_${{ inputs.project_version }}_${{ inputs.store_architectures }}_bundle.msixupload"
+          Write-Host "azure_client_id: ${{ secrets.azure_client_id }}"
+          Write-Host "azure_client_secret: ${{ secrets.azure_client_secret }}"
+          Write-Host "azure_tenant_id: ${{ secrets.azure_tenant_id }}"
+          Write-Host "azure_subscription_id: ${{ secrets.azure_subscription_id }}"
+          Write-Host "store_seller_id: ${{ secrets.store_seller_id }}"
+
+      - name: artifact_download
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_name }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: store_setup
+        uses: microsoft/microsoft-store-apppublisher@v1
+
+      - name: store_configure
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: >
+          msstore reconfigure
+          --tenantId ${{ secrets.azure_tenant_id }}
+          --sellerId ${{ secrets.store_seller_id }}
+          --clientId ${{ secrets.azure_client_id }}
+          --clientSecret ${{ secrets.azure_client_secret }}
+          --verbose
+
+      # - name: store_info
+      #   continue-on-error: true
+      #   shell: pwsh
+      #   run: >
+      #     msstore info
+
+      # - name: store_apps_list
+      #   continue-on-error: true
+      #   shell: pwsh
+      #   run: >
+      #     msstore apps list
+
+      - name: store_publish
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: >
+          msstore publish "${{ inputs.artifact_name }}_${{ inputs.project_version }}_${{ inputs.store_architectures }}_bundle.msixupload"
+          --appId ${{ inputs.store_app_id }}
+          --flightId ${{ inputs.store_flight_id }}
+          --verbose
+
+      - uses: softprops/action-gh-release@v3
+        name: add_release        
+        with:
+          tag_name: "${{ inputs.project_version }}"

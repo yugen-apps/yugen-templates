@@ -1,0 +1,107 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+      project_version:
+        required: true
+        type: string
+      store_app_id:
+        required: true
+        type: string
+      store_architectures:
+        required: false
+        type: string
+        default: >-
+          ["X64", "ARM64"]
+    secrets:
+      azure_client_id:
+        required: true
+      azure_client_secret:
+        required: true
+      azure_tenant_id:
+        required: true
+      azure_subscription_id:
+        required: true
+      store_seller_id:
+        required: true
+
+jobs:
+  deploy_store_job:
+    runs-on: ubuntu-latest
+    steps:
+      
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "artifact_name: ${{ inputs.artifact_name }}"
+          Write-Host "artifact_dir: ${{ inputs.artifact_dir }}"
+
+      - name: artifact_download
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_name }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+
+      # - name: Find MSIX file path
+      #   id: msix
+      #   run: |
+      #     $file = Get-ChildItem -Path ${{ env.ARTIFACT_DIRECTORY }} -Filter *.msixupload | Select-Object -First 1
+      #     echo "msix_path=$($file.FullName)" >> $env:GITHUB_ENV
+      #   shell: pwsh
+
+      # - name: Debug MSIX file path
+      #   run: |
+      #     echo ${{ env.msix_path }}
+
+      - name: store_setup
+        uses: microsoft/store-submission@v1
+        with:
+          command: configure
+          type: win32
+          seller-id: ${{ secrets.store_seller_id }}
+          product-id: ${{ inputs.store_app_id }}
+          tenant-id: ${{ secrets.azure_tenant_id }}
+          client-id: ${{ secrets.azure_client_id }}
+          client-secret: ${{ secrets.azure_client_secret }}
+
+      # https://github.com/jirimaier/DataPlotter/blob/main/.github/workflows/deploy-microsoft-store.yml
+      # "filePath": "${{ env.msix_path }}",
+      # https://github.com/lpds25/PowerToys/blob/master/.github/workflows/msstore-submissions.yml
+      - name: store_draft_submission
+        uses: microsoft/store-submission@v1
+        with:
+          command: update
+          product-update: >-
+            {
+              "packages": [
+                {
+                  "packageUrl": "${{ inputs.artifact_dir }}",
+                  "languages": ["en"],
+                  "architectures": ${{ inputs.store_architectures }},
+                  "isSilentInstall": true
+                }
+              ]
+            }
+
+      - name: store_publish_submission
+        uses: microsoft/store-submission@v1
+        with:
+          command: publish
+
+      - uses: softprops/action-gh-release@v3
+        name: add_release        
+        with:
+          tag_name: "${{ inputs.project_version }}"

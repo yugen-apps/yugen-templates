@@ -1,0 +1,50 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+      environment_name:
+        required: true
+        type: string
+    secrets:
+      azure_static_web_apps_api_token:
+        required: true
+      gh_token:
+        required: true
+
+jobs:
+  deploy_azure_web_app_job:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment_name }}
+
+    steps:
+
+      - name: artifact_download_webapp
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_name }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: deploy_static_web_app
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.azure_static_web_apps_api_token }}
+          repo_token: ${{ secrets.gh_token }}
+          action: 'upload'
+          app_location: ./${{ inputs.artifact_dir }}/wwwroot
+          skip_app_build: true
+          # deployment_environment: ${{ inputs.environment_name }}

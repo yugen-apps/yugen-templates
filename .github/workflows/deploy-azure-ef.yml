@@ -1,0 +1,80 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_appsettings:
+        required: false
+        type: string
+        default: "appsettings.json"
+      artifact_efbundle:
+        required: false
+        type: string
+        default: "efbundle"
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+      environment_name:
+        required: true
+        type: string
+      db_name:
+        required: true
+        type: string
+      db_server_name:
+        required: true
+        type: string
+    secrets:
+      azure_client_id:
+        required: true
+      azure_tenant_id:
+        required: true
+      azure_subscription_id:
+        required: true
+
+jobs:
+  deploy_ef_job:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment_name }}
+
+    steps:
+
+      - name: artifact_download_appsettings
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_appsettings }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: artifact_download_efbundle
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_efbundle }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: chmod_execute_efbundle
+        shell: bash
+        run: >
+          sudo chmod +x "./${{ inputs.artifact_dir }}/${{ inputs.artifact_efbundle }}"
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.azure_client_id }}
+          tenant-id: ${{ secrets.azure_tenant_id }}
+          subscription-id: ${{ secrets.azure_subscription_id }}
+          enable-AzPSSession: true
+
+      - name: ef_apply_migration
+        uses: azure/powershell@v3
+        with:
+          azPSVersion: "latest"
+          failOnStandardError: true
+          inlineScript: >
+            ./${{ inputs.artifact_dir }}/${{ inputs.artifact_efbundle }} 
+            --connection 'Server=tcp:${{ inputs.db_server_name }};Database=${{ inputs.db_name }};Encrypt=True;Authentication=Active Directory Default;' 
+            --verbose

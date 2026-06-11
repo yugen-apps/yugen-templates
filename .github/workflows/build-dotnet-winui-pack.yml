@@ -1,0 +1,104 @@
+on:
+  workflow_call:
+    inputs:
+      project_configuration:
+        required: false
+        type: string
+        default: "Release"
+      project_name:
+        required: true
+        type: string
+      project_version:
+        required: false
+        type: string
+        default: "0.0.1"
+      artifact_dir:
+        required: false
+        type: string
+        default: "AppPackages"
+      solution_file:
+        required: true
+        type: string
+      project_platform:
+        required: false
+        type: string
+        default: "x64"
+      project_appx_bundle:
+        required: false
+        type: string
+        default: "Always"
+      project_appx_bundle_platforms:
+        required: false
+        type: string
+        default: "x64|ARM64"
+      project_appx_package_build_mode:
+        required: false
+        type: string
+        default: "StoreUpload"
+jobs:
+  build_msbuild_pack_job:
+    runs-on: windows-2025-vs2026
+    steps:
+
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "project_configuration: ${{ inputs.project_configuration }}"
+          Write-Host "project_name: ${{ inputs.project_name }}"
+          Write-Host "project_version: ${{ inputs.project_version }}"
+          Write-Host "solution_file: ${{ inputs.solution_file }}"
+          Write-Host "github_workspace: ${{ github.workspace }}"
+
+      - name: debug_dir
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse
+
+      # https://github.com/actions/cache/blob/v5/examples.md#c---nuget
+      - name: set_nuget_cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: appxmanifest_upate_version
+        shell: pwsh
+        run: |
+          [xml]$manifest = get-content "./${{ inputs.project_name }}/Package.appxmanifest"
+          $manifest.Package.Identity.Version = "${{ inputs.project_version }}"
+          $manifest.save("./${{ inputs.project_name }}/Package.appxmanifest")
+
+      - name: dotnet_build_pack
+        shell: pwsh
+        run: >
+          dotnet publish "${{ inputs.solution_file }}"
+          /p:AppxBundle="${{ inputs.project_appx_bundle }}"
+          /p:AppxBundlePlatforms="${{ inputs.project_appx_bundle_platforms}}"
+          /p:AppxPackageDir="./${{ inputs.artifact_dir }}"
+          /p:AppxPackageSigningEnabled="false"
+          /p:BuildAppxUploadPackageForUap="true"
+          /p:Configuration="${{ inputs.project_configuration }}"
+          /p:GenerateAppxPackageOnBuild="true"
+          /p:Platform="${{ inputs.project_platform }}"
+          /p:PublishAppxPackage="true"
+          /p:UapAppxPackageBuildMode="${{ inputs.project_appx_package_build_mode }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.project_name }}/${{ inputs.artifact_dir }}/"
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: artifact_upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ inputs.project_name }}"
+          path: "./${{ inputs.project_name }}/${{ inputs.artifact_dir }}/**/*.msixupload"

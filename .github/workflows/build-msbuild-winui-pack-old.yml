@@ -1,0 +1,141 @@
+on:
+  workflow_call:
+    inputs:
+      project_configuration:
+        required: false
+        type: string
+        default: "Release"
+      project_name:
+        required: true
+        type: string
+      project_version:
+        required: false
+        type: string
+        default: "0.0.1"
+      artifact_dir:
+        required: false
+        type: string
+        default: "AppPackages"
+      solution_file:
+        required: true
+        type: string
+      project_appx_bundle:
+        required: false
+        type: string
+        default: "Never"
+      project_appx_package_build_mode:
+        required: false
+        type: string
+        default: "StoreUpload"
+        # SideloadOnly
+jobs:
+  build_msbuild_pack_job:
+    runs-on: windows-2025-vs2026
+    steps:
+
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "project_configuration: ${{ inputs.project_configuration }}"
+          Write-Host "project_name: ${{ inputs.project_name }}"
+          Write-Host "project_version: ${{ inputs.project_version }}"
+          Write-Host "solution_file: ${{ inputs.solution_file }}"
+          Write-Host "github_workspace: ${{ github.workspace }}"
+
+      - name: debug_dir
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse
+
+      # https://github.com/actions/cache/blob/v5/examples.md#c---nuget
+      - name: set_nuget_cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: appxmanifest_upate_version
+        shell: pwsh
+        run: |
+          [xml]$manifest = get-content "./${{ inputs.project_name }}/Package.appxmanifest"
+          $manifest.Package.Identity.Version = "${{ inputs.project_version }}"
+          $manifest.save("./${{ inputs.project_name }}/Package.appxmanifest")
+
+      - name: nuget_setup
+        uses: nuget/setup-nuget@v4
+
+      - name: nuget_restore
+        shell: pwsh
+        run: >
+          nuget restore ${{ inputs.solution_file }}
+
+      - name: msbuild_setup
+        uses: microsoft/setup-msbuild@v3
+        with:
+          msbuild-architecture: x64
+
+      - name: msbuild_build_pack_arm64
+        shell: pwsh
+        run: >
+          msbuild "${{ inputs.solution_file }}"
+          /p:AppxBundle="${{ inputs.project_appx_bundle }}"
+          /p:AppxPackageDir="./${{ inputs.artifact_dir }}"
+          /p:AppxPackageSigningEnabled="false"
+          /p:Configuration="${{ inputs.project_configuration }}"
+          /p:GenerateAppxPackageOnBuild="true"
+          /p:Platform="${{ env.Platform }}"
+          /p:UapAppxPackageBuildMode="${{ inputs.project_appx_package_build_mode }}"
+        env:
+          Platform: "arm64"
+
+      - name: msbuild_build_pack_x64
+        shell: pwsh
+        run: >
+          msbuild "${{ inputs.solution_file }}"
+          /p:AppxBundle="${{ inputs.project_appx_bundle }}"
+          /p:AppxPackageDir="./${{ inputs.artifact_dir }}"
+          /p:AppxPackageSigningEnabled="false"
+          /p:Configuration="${{ inputs.project_configuration }}"
+          /p:GenerateAppxPackageOnBuild="true"
+          /p:Platform="${{ env.Platform }}"
+          /p:UapAppxPackageBuildMode="${{ inputs.project_appx_package_build_mode }}"
+        env:
+          Platform: "x64"
+
+      - name: package_set_vars
+        id: set-package
+        shell: pwsh
+        run: |
+          Write-Output "arm64=${{ inputs.artifact_dir }}/${{ inputs.project_name }}_${{ inputs.project_version }}_ARM64_Test" >> $Env:GITHUB_OUTPUT
+          Write-Output "x64=${{ inputs.artifact_dir }}/${{ inputs.project_name }}_${{ inputs.project_version }}_x64_Test" >> $Env:GITHUB_OUTPUT
+
+      - name: debug_package_vars
+        run: | 
+          ls -R ${{ steps.set-package.outputs.ARM64 }}
+          ls -R ${{ steps.set-package.outputs.x64 }}
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.project_name }}/${{ inputs.artifact_dir }}/"
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: artifact_upload_arm64
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ inputs.project_name }}_arm64"
+          path: "./${{ inputs.project_name }}/${{ steps.set-package.outputs.arm64 }}/**/*.msix"
+
+      - name: artifact_upload_x64
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ inputs.project_name }}_x64"
+          path: "./${{ inputs.project_name }}/${{ steps.set-package.outputs.x64 }}/**/*.msix"
