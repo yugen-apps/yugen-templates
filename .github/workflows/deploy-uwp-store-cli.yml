@@ -35,7 +35,7 @@ on:
 
 jobs:
   deploy_store_job:
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     steps:
       
       - name: debug_vars
@@ -68,7 +68,7 @@ jobs:
           Get-ChildItem -Recurse
 
       - name: store_setup
-        uses: microsoft/microsoft-store-apppublisher@v1
+        uses: microsoft/microsoft-store-apppublisher@v1.3
 
       - name: store_configure
         continue-on-error: true
