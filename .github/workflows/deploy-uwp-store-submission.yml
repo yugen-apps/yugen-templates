@@ -67,24 +67,30 @@ jobs:
       #     echo ${{ env.msix_path }}
 
       - name: store_setup
-        uses: microsoft/store-submission@v1
+        uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
         with:
-          command: configure
-          type: win32
-          seller-id: ${{ secrets.store_seller_id }}
-          product-id: ${{ inputs.store_app_id }}
-          tenant-id: ${{ secrets.azure_tenant_id }}
-          client-id: ${{ secrets.azure_client_id }}
-          client-secret: ${{ secrets.azure_client_secret }}
+          version: v0.4.1
+
+      - name: store_configure
+        env:
+          STORE_SELLER_ID: ${{ secrets.store_seller_id }}
+          STORE_TENANT_ID: ${{ secrets.azure_tenant_id }}
+          STORE_CLIENT_ID: ${{ secrets.azure_client_id }}
+          STORE_CLIENT_SECRET: ${{ secrets.azure_client_secret }}
+        run: >-
+          msstore reconfigure
+          --tenantId "$STORE_TENANT_ID"
+          --sellerId "$STORE_SELLER_ID"
+          --clientId "$STORE_CLIENT_ID"
+          --clientSecret "$STORE_CLIENT_SECRET"
 
       # https://github.com/jirimaier/DataPlotter/blob/main/.github/workflows/deploy-microsoft-store.yml
-      # "filePath": "${{ env.msix_path }}",
-      # https://github.com/lpds25/PowerToys/blob/master/.github/workflows/msstore-submissions.yml
+      # To submit a local package file instead of a URL, use `msstore publish <path>`.
+      # https://github.com/microsoft/PowerToys/blob/main/.github/workflows/msstore-submissions.yml
       - name: store_draft_submission
-        uses: microsoft/store-submission@v1
-        with:
-          command: update
-          product-update: >-
+        env:
+          STORE_PRODUCT_ID: ${{ inputs.store_app_id }}
+          PRODUCT_UPDATE: >-
             {
               "packages": [
                 {
@@ -95,11 +101,12 @@ jobs:
                 }
               ]
             }
+        run: msstore submission update "$STORE_PRODUCT_ID" "$PRODUCT_UPDATE"
 
       - name: store_publish_submission
-        uses: microsoft/store-submission@v1
-        with:
-          command: publish
+        env:
+          STORE_PRODUCT_ID: ${{ inputs.store_app_id }}
+        run: msstore submission publish "$STORE_PRODUCT_ID"
 
       - uses: softprops/action-gh-release@v3
         name: add_release        
