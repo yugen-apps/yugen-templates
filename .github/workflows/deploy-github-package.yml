@@ -1,0 +1,57 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+    secrets:
+      gh_token:
+        required: true
+
+jobs:
+  deploy_github_package_job:
+    runs-on: ubuntu-latest
+    steps:
+      
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "artifact_name: ${{ inputs.artifact_name }}"
+          Write-Host "artifact_dir: ${{ inputs.artifact_dir }}"
+          Write-Host "gh_token: ${{ secrets.gh_token }}"
+
+      - name: artifact_download
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_name }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+
+      # https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry
+      - name: add_gh_nuget_source
+        shell: pwsh
+        run: >
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          --username "${{ github.repository_owner }}"
+          --password "${{ secrets.gh_token }}"
+          --store-password-in-clear-text
+          --name "github"
+
+      - name: deploy_nuget
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: >
+          dotnet nuget push "*.nupkg"
+          --api-key "${{ secrets.gh_token }}"
+          --source "github"
+          --skip-duplicate

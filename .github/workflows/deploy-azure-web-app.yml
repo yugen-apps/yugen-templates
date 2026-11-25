@@ -1,0 +1,107 @@
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      artifact_dir:
+        required: false
+        type: string
+        default: "artifact"
+      azure_webapp_name:
+        required: true
+        type: string
+      environment_name:
+        required: true
+        type: string
+      db_name:
+        required: true
+        type: string
+      db_server_name:
+        required: true
+        type: string
+    secrets:
+      azure_client_id:
+        required: true
+      azure_tenant_id:
+        required: true
+      azure_subscription_id:
+        required: true
+      google_client_id:
+        required: true
+      google_client_secret:
+        required: true
+
+jobs:
+  deploy_azure_web_app_job:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment_name }}
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+
+      - name: artifact_download_webapp
+        uses: actions/download-artifact@v8
+        with:
+          name: "${{ inputs.artifact_name }}"
+          path: "${{ inputs.artifact_dir }}"
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        working-directory: "./${{ inputs.artifact_dir }}"
+        run: |
+          Get-ChildItem -Recurse
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.azure_client_id }}
+          tenant-id: ${{ secrets.azure_tenant_id }}
+          subscription-id: ${{ secrets.azure_subscription_id }}
+          enable-AzPSSession: true
+
+      - uses: azure/appservice-settings@v1
+        id: settings
+        with:
+          app-name: ${{ inputs.azure_webapp_name }}
+          app-settings-json: >
+            [
+              {
+                "name": "BaseUrl",
+                "value": "https://${{ inputs.azure_webapp_name }}.azurewebsites.net/",
+                "slotSetting": false
+              },
+              {
+                "name": "Authentication__Google__ClientId",
+                "value": "${{ secrets.google_client_id }}",
+                "slotSetting": false
+              },
+              {
+                "name": "Authentication__Google__ClientSecret",
+                "value": "${{ secrets.google_client_secret }}",
+                "slotSetting": false
+              }
+            ]
+          connection-strings-json: >
+            [
+              {
+                "name": "AZURE_SQL_CONNECTIONSTRING",
+                "value": "Server=tcp:${{ inputs.db_server_name }};Database=${{ inputs.db_name }};Encrypt=True;User ID=${{ secrets.azure_client_id }};Connection Timeout=10;Authentication=Active Directory Managed Identity;",
+                "type": "SQLAzure",
+                "slotSetting": false
+              }
+            ]
+
+      - name: debug_url
+        shell: bash
+        run: echo "The webapp-url is ${{ steps.settings.outputs.webapp-url }}"
+
+      - name: deploy_azure_web_app
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ inputs.azure_webapp_name }}
+          package: ./${{ inputs.artifact_dir }}
+          clean: true
+          restart: true

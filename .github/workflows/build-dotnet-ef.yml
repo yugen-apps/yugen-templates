@@ -1,0 +1,119 @@
+on:
+  workflow_call:
+    inputs:
+      dotnet_cache:
+        required: false
+        type: boolean
+        default: false
+      dotnet_version:
+        required: false
+        type: string
+        default: "10.0"
+      project_configuration:
+        required: false
+        type: string
+        default: "Release"
+      project_data_name:
+        required: true
+        type: string
+      project_startup_name:
+        required: true
+        type: string
+      project_version:
+        required: false
+        type: string
+        default: "0.0.1"
+      artifact_appsettings:
+        required: false
+        type: string
+        default: "appsettings.json"
+      artifact_efbundle:
+        required: false
+        type: string
+        default: "efbundle"
+
+jobs:
+  build_ef_job:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "dotnet_cache: ${{ inputs.dotnet_cache }}"
+          Write-Host "dotnet_version: ${{ inputs.dotnet_version }}"
+          Write-Host "project_configuration: ${{ inputs.project_configuration }}"
+          Write-Host "project_data_name: ${{ inputs.project_data_name }}"
+          Write-Host "project_startup_name: ${{ inputs.project_startup_name }}"
+          Write-Host "project_version: ${{ inputs.project_version }}"
+          Write-Host "artifact_efbundle: ${{ inputs.artifact_efbundle }}"
+          Write-Host "artifact_appsettings: ${{ inputs.artifact_appsettings }}"
+
+      # - name: dotnet_setup
+      #   uses: actions/setup-dotnet@v5
+      #   with:
+      #     dotnet-version: "${{ inputs.dotnet_version }}.x"
+      #     cache: "${{ inputs.dotnet_cache }}"
+
+      # https://github.com/actions/cache/blob/v5/examples.md#c---nuget
+      - name: set_nuget_cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: debug_dir
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: ef_install
+        shell: bash
+        run: >
+          dotnet tool install dotnet-ef  
+          --global  
+          --version "${{ inputs.dotnet_version }}.*"
+
+      - name: dotnet_build
+        continue-on-error: true
+        shell: pwsh
+        run: >
+          dotnet build "${{ inputs.project_startup_name }}"
+          --configuration "${{ inputs.project_configuration }}"
+          --property:PackageVersion="${{ inputs.project_version }}"
+          --property:Version="${{ inputs.project_version }}"
+
+      - name: ef_migrations_bundle
+        shell: bash
+        run: >
+          dotnet ef migrations bundle  
+          --configuration "${{ inputs.project_configuration }}"  
+          --startup-project "${{ inputs.project_startup_name }}"
+          --project "${{ inputs.project_data_name }}"
+          --self-contained  
+          --verbose
+
+      - name: debug_artifact_dir
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse
+
+      - name: artifact_upload_appsettings
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ inputs.artifact_appsettings }}"
+          path: "./${{ inputs.project_startup_name }}/${{ inputs.artifact_appsettings }}"
+
+      - name: artifact_upload_efbundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: "${{ inputs.artifact_efbundle }}"
+          path: "./${{ inputs.artifact_efbundle }}"

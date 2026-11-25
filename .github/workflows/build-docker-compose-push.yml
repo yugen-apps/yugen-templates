@@ -1,0 +1,74 @@
+on:
+  workflow_call:
+    inputs:
+      docker_registry:
+        required: true
+        type: string
+      docker_namespace:
+        required: true
+        type: string
+      docker_repository:
+        required: true
+        type: string
+      docker_compose_file:
+        required: false
+        type: string
+        default: "./docker-compose.yml"
+      docker_tag:
+        required: false
+        type: string
+        default: "0.0.1"
+      project_configuration:
+        required: false
+        type: string
+        default: "Release"
+
+jobs:
+  build_docker_image_push_job:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+        
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v4
+
+      # - name: Set up Docker Compose
+      #   uses: docker/setup-compose-action@v2
+
+      - name: debug_vars
+        shell: pwsh
+        run: |
+          Write-Host "docker_registry: ${{ inputs.docker_registry }}"
+          Write-Host "docker_namespace: ${{ inputs.docker_namespace }}"
+          Write-Host "docker_repository: ${{ inputs.docker_repository }}"
+          Write-Host "docker_compose_file: ${{ inputs.docker_compose_file }}"
+          Write-Host "docker_tag: ${{ inputs.docker_tag }}"
+          Write-Host "project_configuration: ${{ inputs.project_configuration }}"
+     
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4
+        with:
+          registry: "${{ inputs.docker_registry }}"
+          username: "${{ github.actor }}"
+          password: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: docker compose build
+        shell: pwsh
+        run: |
+          docker compose --file "${{ inputs.docker_compose_file }}" build
+
+      - name: docker tag
+        shell: pwsh
+        run: |
+          docker tag ${{ inputs.docker_repository }}:latest ${{ inputs.docker_registry }}/${{ inputs.docker_namespace }}/${{ inputs.docker_repository }}:latest
+          docker tag ${{ inputs.docker_repository }}:latest ${{ inputs.docker_registry }}/${{ inputs.docker_namespace }}/${{ inputs.docker_repository }}:${{ inputs.docker_tag }}
+
+      - name: docker push
+        shell: pwsh
+        run: |
+          docker push ${{ inputs.docker_registry }}/${{ inputs.docker_namespace }}/${{ inputs.docker_repository }}:latest
+          docker push ${{ inputs.docker_registry }}/${{ inputs.docker_namespace }}/${{ inputs.docker_repository }}:${{ inputs.docker_tag }}
